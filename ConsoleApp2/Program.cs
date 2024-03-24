@@ -1,32 +1,67 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.IO;
+using System.Threading;
 
 class EdgeDetectionApp
 {
+    static int processedFiles = 0;
     static void Main(string[] args)
     {
-        if (args.Length < 2)
+        if (args.Length < 1)
         {
-            Console.WriteLine("Usage: EdgeDetectionApp <input image path> <output image path>");
+            Console.WriteLine("Usage: EdgeDetectionApp <input directory path>");
             return;
         }
 
-        string inputImagePath = args[0];
-        string outputImagePath = args[1];
+        string inputDirectoryPath = args[0];
+        string[] extensions = { ".jpg", ".jpeg", ".png" };
+        string[] files = Directory.GetFiles(inputDirectoryPath);
+
+        foreach (string file in files)
+        {
+            if (Array.Exists(extensions, ext => file.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+            {
+                // Increment the counter for each file processed
+                Interlocked.Increment(ref processedFiles);
+
+                ThreadPool.QueueUserWorkItem(ProcessImageFile, file);
+            }
+        }
+
+        // Simple wait mechanism to ensure all files are processed before exiting
+        while (processedFiles > 0)
+        {
+            Thread.Sleep(100); // Wait for 100 ms
+        }
+
+        Console.WriteLine("All files have been processed.");
+    }
+
+    private static void ProcessImageFile(object state)
+    {
+        string file = (string)state;
+        string inputDirectoryPath = Path.GetDirectoryName(file);
+        string outputFileName = "edge_" + Path.GetFileName(file);
+        string outputFilePath = Path.Combine(inputDirectoryPath, outputFileName);
 
         try
         {
-            using (Bitmap inputImage = new Bitmap(inputImagePath))
+            using (Bitmap inputImage = new Bitmap(file))
             {
                 Bitmap outputImage = SobelEdgeDetection(inputImage);
-                outputImage.Save(outputImagePath);
-                Console.WriteLine($"Edge detection completed. Result saved to {outputImagePath}");
+                outputImage.Save(outputFilePath);
+                Console.WriteLine($"Edge detection completed for {file}. Result saved to {outputFilePath}");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"An error occurred: {ex.Message}");
+            Console.WriteLine($"An error occurred processing {file}: {ex.Message}");
+        }
+        finally
+        {
+            // Decrement the counter once the file is processed
+            Interlocked.Decrement(ref processedFiles);
         }
     }
 
@@ -35,17 +70,8 @@ class EdgeDetectionApp
         Bitmap grayScaleImage = ConvertToGrayscale(image);
         Bitmap edgeImage = new Bitmap(grayScaleImage.Width, grayScaleImage.Height);
 
-        int[,] xKernel = {
-            { -1, 0, 1 },
-            { -2, 0, 2 },
-            { -1, 0, 1 }
-        };
-
-        int[,] yKernel = {
-            {  1,  2,  1 },
-            {  0,  0,  0 },
-            { -1, -2, -1 }
-        };
+        int[,] xKernel = { { -1, 0, 1 }, { -2, 0, 2 }, { -1, 0, 1 } };
+        int[,] yKernel = { { 1, 2, 1 }, { 0, 0, 0 }, { -1, -2, -1 } };
 
         for (int y = 1; y < grayScaleImage.Height - 1; y++)
         {
